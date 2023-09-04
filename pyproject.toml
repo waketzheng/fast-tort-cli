@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "fast-tortoise-cli"
+name = "fast-tort-cli"
 version = "0.1.0"
 description = ""
 authors = ["Waket Zheng <waketzheng@gmail.com>"]
 readme = "README.md"
-packages = [{include = "fast_tortoise_cli"}]
+packages = [{include = "fast_tort_cli"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -35,4 +35,4 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-fast = "fast_tortoise_cli:cli"
+fast = "fast_tort_cli:cli"

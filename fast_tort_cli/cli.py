@@ -319,7 +319,7 @@ def sync(
     )
     if not UpgradeDependencies.should_with_dev():
         install_cmd = install_cmd.replace(" --with=dev", "")
-    if extras:
+    if extras and isinstance(extras, str|list):
         install_cmd = install_cmd.replace("export", f"export --{extras=}")
     if should_remove and not save:
         install_cmd += " && rm -f {0}"
