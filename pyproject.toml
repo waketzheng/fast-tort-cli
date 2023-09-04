@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fast-tort-cli"
-version = "0.1.0"
+version = "0.1.1"
 description = ""
 authors = ["Waket Zheng <waketzheng@gmail.com>"]
 readme = "README.md"
@@ -36,3 +36,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 fast = "fast_tort_cli:cli"
+
+[tool.mypy]
+pretty = true
+ignore_missing_imports = true

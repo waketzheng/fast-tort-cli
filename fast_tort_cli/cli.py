@@ -9,10 +9,40 @@ try:
     from typer import Option, echo
 
     cli = typer.Typer()
+    if len(sys.argv) == 2 and sys.argv[1] == "lint":
+        sys.argv.append(".")
 except ModuleNotFoundError:
     import click
     from click import echo
     from click import option as Option  # type:ignore
+    from click.core import Group
+
+    def command(self, *args, **kwargs):
+        from click.decorators import command
+
+        def decorator(f):
+            if kwargs.get("name") == "lint":
+                import functools
+
+                def auto_fill_args(func):
+                    @functools.wraps(func)
+                    def runner(*arguments, **kw):
+                        if not arguments and "files" not in kw:
+                            arguments = (".",)
+                        return func(*arguments, **kw)
+
+                    return runner
+
+                f = auto_fill_args(f)
+                if sys.argv[2:]:
+                    f = click.argument("files", nargs=-1)(f)
+            cmd = command(*args, **kwargs)(f)
+            self.add_command(cmd)
+            return cmd
+
+        return decorator
+
+    Group.command = command  # type:ignore
 
     @click.group()
     def cli() -> None:
@@ -37,6 +67,8 @@ def get_part(s: str) -> str:
         return choices[s]
     except KeyError as e:
         echo(f"Invalid part: {s!r}")
+        if "typer" not in locals():
+            sys.exit(1)
         raise typer.Exit(1) from e
 
 
@@ -51,9 +83,9 @@ def capture_cmd_output(command: list[str] | str, **kw) -> str:
     return r.stdout.strip().decode()
 
 
-def get_current_version(echo=False) -> str:
+def get_current_version(verbose=False) -> str:
     cmd = ["poetry", "version", "-s"]
-    if echo:
+    if verbose:
         command = " ".join(cmd)
         echo(f"--> {command}")
     return capture_cmd_output(cmd)
@@ -259,9 +291,11 @@ def upgrade():
 
 @cli.command(name="lint")
 def make_style(
-    files: list[str] = None,  # type:ignore
+    files: list[str],  # type:ignore
     remove: bool = Option(False, "-remove", "-r"),
 ):
+    if isinstance(files, str):
+        files = [files]
     _lint(remove, files)
 
 
@@ -319,7 +353,7 @@ def sync(
     )
     if not UpgradeDependencies.should_with_dev():
         install_cmd = install_cmd.replace(" --with=dev", "")
-    if extras and isinstance(extras, str|list):
+    if extras and isinstance(extras, str | list):
         install_cmd = install_cmd.replace("export", f"export --{extras=}")
     if should_remove and not save:
         install_cmd += " && rm -f {0}"
