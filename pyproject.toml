@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "fast-tortoise-cli"
+version = "0.1.0"
+description = ""
+authors = ["Waket Zheng <waketzheng@gmail.com>"]
+readme = "README.md"
+packages = [{include = "fast_tortoise_cli"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+isort = "^5.12.0"
+black = "^23.7.0"
+ruff = "^0.0.287"
+mypy = "^1.5.1"
+typer = "^0.9.0"
+anyio = "^4.0.0"
+bumpversion = "^0.6.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+fast = "fast_tortoise_cli:cli"
