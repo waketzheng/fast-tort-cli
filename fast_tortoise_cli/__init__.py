@@ -1,1 +1,1 @@
-from .cli import *
+from .cli import *  # NOQA: F403

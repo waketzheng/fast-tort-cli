@@ -23,3 +23,6 @@ archive.zip
 # vim temporary files
 *~
 .*.sw?
+
+# Generated requirement file
+dev_requirements.txt

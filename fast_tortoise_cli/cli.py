@@ -4,24 +4,22 @@ import sys
 from enum import StrEnum
 from pathlib import Path
 
-import anyio
-import typer
+try:
+    import typer
+    from typer import Option, echo
 
-cli = typer.Typer()
+    cli = typer.Typer()
+except ModuleNotFoundError:
+    import click
+    from click import echo
+    from click import option as Option  # type:ignore
+
+    @click.group()
+    def cli() -> None:
+        pass
+
+
 TOML_FILE = "pyproject.toml"
-
-
-async def get_work_dir(name=TOML_FILE) -> Path:
-    parent = await anyio.Path.cwd()
-    for _ in range(5):
-        if await parent.joinpath(name).exists():
-            return parent._path
-        parent = parent.parent
-    else:
-        raise Exception(f"{name} not found! Make sure this is a poetry project.")
-
-
-ROOT = anyio.run(get_work_dir)
 
 
 class PartChoices(StrEnum):
@@ -38,14 +36,14 @@ def get_part(s: str) -> str:
     try:
         return choices[s]
     except KeyError as e:
-        typer.echo(f"Invalid part: {s!r}")
+        echo(f"Invalid part: {s!r}")
         raise typer.Exit(1) from e
 
 
 def run_and_echo(cmd: str, **kw) -> int:
-    typer.echo(f"--> {cmd}")
+    echo(f"--> {cmd}")
     kw.setdefault("shell", True)
-    return subprocess.call(cmd, **kw)
+    return subprocess.run(cmd, **kw).returncode
 
 
 def capture_cmd_output(command: list[str] | str, **kw) -> str:
@@ -57,7 +55,7 @@ def get_current_version(echo=False) -> str:
     cmd = ["poetry", "version", "-s"]
     if echo:
         command = " ".join(cmd)
-        typer.echo(f"--> {command}")
+        echo(f"--> {command}")
     return capture_cmd_output(cmd)
 
 
@@ -65,7 +63,7 @@ def exit_if_run_failed(cmd: str, env=None, _exit=False, **kw) -> None:
     if env is not None:
         env = {**os.environ, **env}
     if rc := run_and_echo(cmd, env=env, **kw):
-        if _exit:
+        if _exit or "typer" not in locals():
             sys.exit(rc)
         raise typer.Exit(rc)
 
@@ -73,7 +71,7 @@ def exit_if_run_failed(cmd: str, env=None, _exit=False, **kw) -> None:
 @cli.command(name="bump")
 def bump_version(
     part: PartChoices,
-    commit: bool = typer.Option(
+    commit: bool = Option(
         False, "--commit", "-c", help="Whether run `git commit` after version changed"
     ),
 ):
@@ -94,7 +92,7 @@ def bump():
 
 def _bump(commit: bool, part: str, filename=TOML_FILE):
     version = get_current_version()
-    typer.echo(f"Current version(@{filename}): {version}")
+    echo(f"Current version(@{filename}): {version}")
     if part:
         part = get_part(part)
     else:
@@ -114,12 +112,53 @@ def _bump(commit: bool, part: str, filename=TOML_FILE):
     exit_if_run_failed(cmd)
     if not commit:
         new_version = get_current_version(True)
-        typer.echo(new_version)
+        echo(new_version)
         if part != "patch":
-            typer.echo("You may want to pin tag by `fast tag`")
+            echo("You may want to pin tag by `fast tag`")
 
 
-class UpgradeDependencies:
+class Project:
+    @staticmethod
+    async def work_dir(name: str, cwd) -> Path | None:
+        parent = await cwd()
+        for _ in range(5):
+            if await parent.joinpath(name).exists():
+                return parent._path
+            parent = parent.parent
+        return None
+
+    @staticmethod
+    def workdir(name: str) -> Path | None:
+        parent = Path.cwd()
+        for _ in range(5):
+            if parent.joinpath(name).exists():
+                return parent
+            parent = parent.parent
+        return None
+
+    @classmethod
+    def get_work_dir(cls, name=TOML_FILE) -> Path:
+        try:
+            from anyio import Path, run
+
+            if (p := run(cls.work_dir, name, Path.cwd)) is not None:
+                return p
+        except ModuleNotFoundError:
+            if (path := cls.workdir(name)) is not None:
+                return path
+        raise Exception(f"{name} not found! Make sure this is a poetry project.")
+
+    @classmethod
+    def load_toml_text(cls):
+        toml_file = cls.get_work_dir().resolve() / TOML_FILE  # to be optimize
+        return toml_file.read_text("utf8")
+
+
+class UpgradeDependencies(Project):
+    class DevFlag(StrEnum):
+        new = "[tool.poetry.group.dev.dependencies]"
+        old = "[tool.poetry.dev-dependencies]"
+
     @staticmethod
     def parse_value(version_info: str, key: str) -> str:
         sep = key + " = "
@@ -138,15 +177,15 @@ class UpgradeDependencies:
             try:
                 package, version_info = m.split("=", 1)
             except ValueError as e:
-                typer.echo(f"{m = }")
+                echo(f"{m = }")
                 raise e
             if (package := package.strip()).lower() == "python":
                 continue
             elif (version_info := version_info.strip()).startswith("{url = }"):
-                typer.echo(f"No need to upgrade for: {line}")
+                echo(f"No need to upgrade for: {line}")
                 continue
             elif version_info == "*":
-                typer.echo(f"Skip wide case line: {line}")
+                echo(f"Skip wide case line: {line}")
                 continue
             if (extras_tip := "extras") in version_info:
                 package += "[" + cls.parse_value(version_info, extras_tip) + "]"
@@ -155,9 +194,11 @@ class UpgradeDependencies:
             if (pf := "platform") in version_info:
                 platform = cls.parse_value(version_info, pf)
                 key = f"--{pf}={platform}"
-            elif (sc := "source") in version_info:
+            if (sc := "source") in version_info:
                 source = cls.parse_value(version_info, sc)
-                key = f"--{sc}={source}"
+                key = ("" if key is None else (key + " ")) + f"--{sc}={source}"
+            if "optional = true" in version_info:
+                key = ("" if key is None else (key + " ")) + "--optional"
             if key is not None:
                 specials[key] = specials.get(key, []) + [item]
             else:
@@ -165,14 +206,18 @@ class UpgradeDependencies:
         return args, specials
 
     @classmethod
+    def should_with_dev(cls):
+        text = cls.load_toml_text()
+        return cls.DevFlag.new in text or cls.DevFlag.old in text
+
+    @classmethod
     def get_args(cls) -> tuple[list[str], list[str], list[list[str]], str]:
         others: list[list[str]] = []
         main_title = "[tool.poetry.dependencies]"
-        toml_file = ROOT.resolve() / TOML_FILE  # to be optimize
-        text = toml_file.read_text("utf8").split(main_title)[-1]
+        text = cls.load_toml_text().split(main_title)[-1]
         dev_flag = " --group dev"
-        if (dev_title := "[tool.poetry.group.dev.dependencies]") not in text:
-            dev_title = "[tool.poetry.dev-dependencies]"  # For poetry<=1.2
+        if (dev_title := cls.DevFlag.new.value) not in text:
+            dev_title = cls.DevFlag.old.value  # For poetry<=1.2
             dev_flag = " --dev"
         try:
             main_toml, dev_toml = text.split(dev_title)
@@ -194,7 +239,7 @@ class UpgradeDependencies:
     @classmethod
     def gen_cmd(cls) -> str:
         main_args, dev_args, others, dev_flags = cls.get_args()
-        command = "poetry add"
+        command = "poetry add "
         upgrade = ""
         if main_args:
             upgrade = command + " ".join(main_args)
@@ -209,11 +254,14 @@ class UpgradeDependencies:
 
 @cli.command()
 def upgrade():
-    exit_if_run_failed(UpgradeDependencies.get_cmd())
+    exit_if_run_failed(UpgradeDependencies.gen_cmd())
 
 
 @cli.command(name="lint")
-def make_style(files: list[str], remove: bool = typer.Option(False, "-remove", "-r")):
+def make_style(
+    files: list[str] = None,  # type:ignore
+    remove: bool = Option(False, "-remove", "-r"),
+):
     _lint(remove, files)
 
 
@@ -241,10 +289,12 @@ def _lint(remove, args, check_only=False, _exit=False):
     ):
         tools = tools[-1]
     lint_them = " && ".join("{0}{%d} {1}" % i for i in range(2, len(tools) + 2))
-    if (app_dir := ROOT / ROOT.name).exists() or (app_dir := ROOT / "app").exists():
+    root = Project.get_work_dir()
+    app_name = root.name.replace("-", "_")
+    if (app_dir := root / app_name).exists() or (app_dir := root / "app").exists():
         if (current_path := Path.cwd()) == app_dir:
             tools[0] += " --src=."
-        elif current_path == ROOT:
+        elif current_path == root:
             tools[0] += f" --src={app_dir.name}"
         else:
             tools[0] += f" --src={app_dir}"
@@ -257,15 +307,20 @@ def _lint(remove, args, check_only=False, _exit=False):
 @cli.command()
 def sync(
     filename="dev_requirements.txt",
-    save: bool = typer.Option(
+    extras: str = Option("", "--extras", "-E"),
+    save: bool = Option(
         False, "--save", "-s", help="Whether save the requirement file"
     ),
 ):
     should_remove = not Path.cwd().joinpath(filename).exists()
     install_cmd = (
         "poetry export --with=dev --without-hashes -o {0}"
-        "&& poetry run pip install -r {0}"
+        " && poetry run pip install -r {0}"
     )
+    if not UpgradeDependencies.should_with_dev():
+        install_cmd = install_cmd.replace(" --with=dev", "")
+    if extras:
+        install_cmd = install_cmd.replace("export", f"export --{extras=}")
     if should_remove and not save:
         install_cmd += " && rm -f {0}"
     exit_if_run_failed(install_cmd.format(filename))

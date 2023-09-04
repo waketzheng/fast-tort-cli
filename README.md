@@ -44,9 +44,9 @@ fast lint /path/to/file-or-directory
 ```bash
 fast bump
 ```
-- Run fastapi server with uvicorn
+- Export requirement file and install `pip install -r `
 ```bash
-fast dev
+fast sync
 ```
 - Upgrade main/dev dependenices to latest version
 ```bash
