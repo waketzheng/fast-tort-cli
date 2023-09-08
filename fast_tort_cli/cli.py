@@ -330,6 +330,7 @@ def tag(
     if "git push" in gs:
         cmd += " && git push"
     exit_if_run_failed(cmd, dry=dry)
+    echo("You may want to publish package:\n poetry publish --build")
 
 
 @cli.command(name="lint")
