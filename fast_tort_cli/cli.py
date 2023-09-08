@@ -81,6 +81,8 @@ def run_and_echo(cmd: str, dry=False, **kw) -> int:
 
 
 def capture_cmd_output(command: list[str] | str, **kw) -> str:
+    if isinstance(command, str) and not kw.get("shell"):
+        command = command.split()
     r = subprocess.run(command, capture_output=True, **kw)
     return r.stdout.strip().decode()
 
@@ -318,8 +320,15 @@ def tag(
     dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
     """Run shell command: git tag -a <current-version-in-pyproject.toml> -m {message}"""
+    gs = capture_cmd_output("git status")
+    if "working tree clean" not in gs:
+        run_and_echo("git status")
+        echo("ERROR: Please run git commit to make sure working tree is clean!")
+        return
     version = get_current_version(verbose=False)
-    cmd = f"git tag -a {version} -m {message!r}"
+    cmd = f"git tag -a {version} -m {message!r} && git push --tags"
+    if "git push" in gs:
+        cmd += " && git push"
     exit_if_run_failed(cmd, dry=dry)
 
 
@@ -345,6 +354,12 @@ def check():
     _lint(sys.argv[1:], True, True)
 
 
+def load_bool(name: str, default=False) -> bool:
+    if not (v := os.getenv(name)):
+        return default
+    return v.lower() not in ("0", "false", "off", "no", "n")
+
+
 def _lint(args, check_only=False, _exit=False):
     cmd = ""
     paths = "."
@@ -355,7 +370,9 @@ def _lint(args, check_only=False, _exit=False):
         tools[0] += " --check-only"
         tools[1] += " --check --fast"
         tools[2] = tools[2].split()[0]
-    if (skip := os.getenv("SKIP_MYPY")) and skip.lower() not in ("0", "false"):
+    elif load_bool("NO_FIX"):
+        tools[2] = tools[2].split()[0]
+    if load_bool("SKIP_MYPY"):
         # Sometimes mypy is too slow
         tools = tools[-1]
     lint_them = " && ".join("{0}{%d} {1}" % i for i in range(2, len(tools) + 2))
