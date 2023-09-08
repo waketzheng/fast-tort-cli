@@ -72,8 +72,10 @@ def get_part(s: str) -> str:
         raise typer.Exit(1) from e
 
 
-def run_and_echo(cmd: str, **kw) -> int:
+def run_and_echo(cmd: str, dry=False, **kw) -> int:
     echo(f"--> {cmd}")
+    if dry:
+        return 0
     kw.setdefault("shell", True)
     return subprocess.run(cmd, **kw).returncode
 
@@ -91,10 +93,10 @@ def get_current_version(verbose=False) -> str:
     return capture_cmd_output(cmd)
 
 
-def exit_if_run_failed(cmd: str, env=None, _exit=False, **kw) -> None:
+def exit_if_run_failed(cmd: str, env=None, _exit=False, dry=False, **kw) -> None:
     if env is not None:
         env = {**os.environ, **env}
-    if rc := run_and_echo(cmd, env=env, **kw):
+    if rc := run_and_echo(cmd, env=env, dry=dry, **kw):
         if _exit or "typer" not in locals():
             sys.exit(rc)
         raise typer.Exit(rc)
@@ -197,6 +199,21 @@ class UpgradeDependencies(Project):
         rest = version_info.split(sep, 1)[-1].strip(" =").split(",", 1)[0]
         return rest.split("}")[0].strip().strip('[]"')
 
+    @staticmethod
+    def no_need_upgrade(version_info: str, line: str) -> bool:
+        if (v := version_info.replace(" ", "")).startswith("{url="):
+            echo(f"No need to upgrade for: {line}")
+            return True
+        if (f := "version=") in v:
+            v = v.split(f)[1].strip('"').split('"')[0]
+        if v == "*":
+            echo(f"Skip wildcard line: {line}")
+            return True
+        elif v.startswith(">") or v.startswith("<"):
+            echo(f"Ignore bigger and smaller: {line}")
+            return True
+        return False
+
     @classmethod
     def build_args(
         cls, package_lines: list[str]
@@ -209,15 +226,10 @@ class UpgradeDependencies(Project):
             try:
                 package, version_info = m.split("=", 1)
             except ValueError as e:
-                echo(f"{m = }")
-                raise e
+                raise Exception(f"{m = }") from e
             if (package := package.strip()).lower() == "python":
                 continue
-            elif (version_info := version_info.strip()).startswith("{url = }"):
-                echo(f"No need to upgrade for: {line}")
-                continue
-            elif version_info == "*":
-                echo(f"Skip wide case line: {line}")
+            if cls.no_need_upgrade(version_info := version_info.strip(' "'), line):
                 continue
             if (extras_tip := "extras") in version_info:
                 package += "[" + cls.parse_value(version_info, extras_tip) + "]"
@@ -242,24 +254,32 @@ class UpgradeDependencies(Project):
         text = cls.load_toml_text()
         return cls.DevFlag.new in text or cls.DevFlag.old in text
 
+    @staticmethod
+    def parse_item(toml_str) -> list[str]:
+        lines: list[str] = []
+        for line in toml_str.splitlines():
+            if (line := line.strip()).startswith("["):
+                if lines:
+                    break
+            else:
+                lines.append(line)
+        return lines
+
     @classmethod
     def get_args(cls) -> tuple[list[str], list[str], list[list[str]], str]:
         others: list[list[str]] = []
         main_title = "[tool.poetry.dependencies]"
         text = cls.load_toml_text().split(main_title)[-1]
-        dev_flag = " --group dev"
+        dev_flag = "--group dev"
         if (dev_title := cls.DevFlag.new.value) not in text:
             dev_title = cls.DevFlag.old.value  # For poetry<=1.2
-            dev_flag = " --dev"
+            dev_flag = "--dev"
         try:
             main_toml, dev_toml = text.split(dev_title)
         except ValueError:
             dev_toml = ""
-            main_toml = text.split("[tool.")[0].split("[build-system]")[0]
-        else:
-            dev_toml = dev_toml.split("[tool.")[0].split("[build-system]")[0]
-        devs = dev_toml.strip().splitlines()
-        mains = main_toml.strip().splitlines()
+            main_toml = text
+        mains, devs = cls.parse_item(main_toml), cls.parse_item(dev_toml)
         prod_packs, specials = cls.build_args(mains)
         if specials:
             others.extend([[k] + v for k, v in specials.items()])
@@ -285,29 +305,47 @@ class UpgradeDependencies(Project):
 
 
 @cli.command()
-def upgrade():
-    exit_if_run_failed(UpgradeDependencies.gen_cmd())
+def upgrade(
+    dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
+):
+    """Upgrade dependencies in pyproject.toml to latest versions"""
+    exit_if_run_failed(UpgradeDependencies.gen_cmd(), dry=dry)
+
+
+@cli.command()
+def tag(
+    message: str = Option("", "-m", "--message"),
+    dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
+):
+    """Run shell command: git tag -a <current-version-in-pyproject.toml> -m {message}"""
+    version = get_current_version(verbose=False)
+    cmd = f"git tag -a {version} -m {message!r}"
+    exit_if_run_failed(cmd, dry=dry)
 
 
 @cli.command(name="lint")
 def make_style(
-    files: list[str],  # type:ignore
-    remove: bool = Option(False, "-remove", "-r"),
+    files: list[str],
+    check_only: bool = Option(False, "--check-only", "-c"),
 ):
+    """Run: isort+black+ruff to reformat code and then mypy to check"""
     if isinstance(files, str):
         files = [files]
-    _lint(remove, files)
+    if check_only:
+        _lint(files, True, True)
+    else:
+        _lint(files)
 
 
-def lint(remove=None):
-    _lint(remove, sys.argv[1:])
+def lint():
+    _lint(sys.argv[1:])
 
 
 def check():
-    _lint(None, sys.argv[1:], True, True)
+    _lint(sys.argv[1:], True, True)
 
 
-def _lint(remove, args, check_only=False, _exit=False):
+def _lint(args, check_only=False, _exit=False):
     cmd = ""
     paths = "."
     if args:
@@ -317,10 +355,8 @@ def _lint(remove, args, check_only=False, _exit=False):
         tools[0] += " --check-only"
         tools[1] += " --check --fast"
         tools[2] = tools[2].split()[0]
-    if (skip_mypy := os.getenv("SKIP_MYPY")) and skip_mypy.lower() not in (
-        "0",
-        "false",
-    ):
+    if (skip := os.getenv("SKIP_MYPY")) and skip.lower() not in ("0", "false"):
+        # Sometimes mypy is too slow
         tools = tools[-1]
     lint_them = " && ".join("{0}{%d} {1}" % i for i in range(2, len(tools) + 2))
     root = Project.get_work_dir()
@@ -345,6 +381,7 @@ def sync(
     save: bool = Option(
         False, "--save", "-s", help="Whether save the requirement file"
     ),
+    dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
     should_remove = not Path.cwd().joinpath(filename).exists()
     install_cmd = (
@@ -357,7 +394,7 @@ def sync(
         install_cmd = install_cmd.replace("export", f"export --{extras=}")
     if should_remove and not save:
         install_cmd += " && rm -f {0}"
-    exit_if_run_failed(install_cmd.format(filename))
+    exit_if_run_failed(install_cmd.format(filename), dry=dry)
 
 
 if __name__ == "__main__":

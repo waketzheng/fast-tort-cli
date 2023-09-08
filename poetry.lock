@@ -33,13 +33,13 @@ files = [
 
 [[package]]
 name = "asttokens"
-version = "2.3.0"
+version = "2.4.0"
 description = "Annotate AST trees with source code positions"
 optional = false
 python-versions = "*"
 files = [
-    {file = "asttokens-2.3.0-py2.py3-none-any.whl", hash = "sha256:bef1a51bc256d349e9f94e7e40e44b705ed1162f55294220dd561d24583d9877"},
-    {file = "asttokens-2.3.0.tar.gz", hash = "sha256:2552a88626aaa7f0f299f871479fc755bd4e7c11e89078965e928fb7bb9a6afe"},
+    {file = "asttokens-2.4.0-py2.py3-none-any.whl", hash = "sha256:cf8fc9e61a86461aa9fb161a14a0841a03c405fa829ac6b202670b3495d2ce69"},
+    {file = "asttokens-2.4.0.tar.gz", hash = "sha256:2e0171b991b2c959acc6c49318049236844a5da1d65ba2672c4880c1c894834e"},
 ]
 
 [package.dependencies]
@@ -661,4 +661,4 @@ all = ["black", "bumpversion", "isort", "mypy", "ruff", "typer"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "63e51d1df88de5810ac09f341e5d4cfdeaad342a3a461e15e701cc1822276bf7"
+content-hash = "b0e0609d80a042a8fc9d169a2bde9eb4ec2c124319bd62437fb7b5378beb1b42"
