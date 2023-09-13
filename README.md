@@ -52,3 +52,7 @@ fast sync
 ```bash
 fast upgrade
 ```
+- Run unittest and report coverage
+```bash
+fast test
+```

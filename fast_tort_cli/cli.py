@@ -52,26 +52,6 @@ except ModuleNotFoundError:
 TOML_FILE = "pyproject.toml"
 
 
-class PartChoices(StrEnum):
-    patch = "patch"
-    minor = "minor"
-    major = "major"
-
-
-def get_part(s: str) -> str:
-    choices: dict[str, str] = {}
-    for i, p in enumerate(PartChoices, 1):
-        v = str(p)
-        choices.update({str(i): v, v: v})
-    try:
-        return choices[s]
-    except KeyError as e:
-        echo(f"Invalid part: {s!r}")
-        if "typer" not in locals():
-            sys.exit(1)
-        raise typer.Exit(1) from e
-
-
 def run_and_echo(cmd: str, dry=False, **kw) -> int:
     echo(f"--> {cmd}")
     if dry:
@@ -104,14 +84,35 @@ def exit_if_run_failed(cmd: str, env=None, _exit=False, dry=False, **kw) -> None
         raise typer.Exit(rc)
 
 
+class PartChoices(StrEnum):
+    patch = "patch"
+    minor = "minor"
+    major = "major"
+
+
+def get_part(s: str) -> str:
+    choices: dict[str, str] = {}
+    for i, p in enumerate(PartChoices, 1):
+        v = str(p)
+        choices.update({str(i): v, v: v})
+    try:
+        return choices[s]
+    except KeyError as e:
+        echo(f"Invalid part: {s!r}")
+        if "typer" not in locals():
+            sys.exit(1)
+        raise typer.Exit(1) from e
+
+
 @cli.command(name="bump")
 def bump_version(
     part: PartChoices,
     commit: bool = Option(
         False, "--commit", "-c", help="Whether run `git commit` after version changed"
     ),
+    dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
-    return _bump(commit, part.value)
+    return _bump(commit, part.value, dry=dry)
 
 
 def bump():
@@ -123,10 +124,10 @@ def bump():
             if not a.startswith("-"):
                 part = a
                 break
-    return _bump(commit, part)
+    return _bump(commit, part, dry="--dry" in args)
 
 
-def _bump(commit: bool, part: str, filename=TOML_FILE):
+def _bump(commit: bool, part: str, filename=TOML_FILE, dry=False):
     version = get_current_version()
     echo(f"Current version(@{filename}): {version}")
     if part:
@@ -145,8 +146,8 @@ def _bump(commit: bool, part: str, filename=TOML_FILE):
         cmd += " --commit && git push && git push --tags && git log -1"
     else:
         cmd += " --allow-dirty"
-    exit_if_run_failed(cmd)
-    if not commit:
+    exit_if_run_failed(cmd, dry=dry)
+    if not commit and not dry:
         new_version = get_current_version(True)
         echo(new_version)
         if part != "patch":
@@ -330,21 +331,23 @@ def tag(
     if "git push" in gs:
         cmd += " && git push"
     exit_if_run_failed(cmd, dry=dry)
-    echo("You may want to publish package:\n poetry publish --build")
+    if not dry:
+        echo("You may want to publish package:\n poetry publish --build")
 
 
 @cli.command(name="lint")
 def make_style(
     files: list[str],
     check_only: bool = Option(False, "--check-only", "-c"),
+    dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
     """Run: isort+black+ruff to reformat code and then mypy to check"""
     if isinstance(files, str):
         files = [files]
     if check_only:
-        _lint(files, True, True)
+        _lint(files, True, True, dry=dry)
     else:
-        _lint(files)
+        _lint(files, dry=dry)
 
 
 def lint():
@@ -361,7 +364,7 @@ def load_bool(name: str, default=False) -> bool:
     return v.lower() not in ("0", "false", "off", "no", "n")
 
 
-def _lint(args, check_only=False, _exit=False):
+def _lint(args, check_only=False, _exit=False, dry=False):
     cmd = ""
     paths = "."
     if args:
@@ -389,7 +392,7 @@ def _lint(args, check_only=False, _exit=False):
     is_in_virtual_environment = False
     prefix = "" if is_in_virtual_environment else "poetry run "
     cmd += lint_them.format(prefix, paths, *tools)
-    exit_if_run_failed(cmd, _exit=_exit)
+    exit_if_run_failed(cmd, _exit=_exit, dry=dry)
 
 
 @cli.command()
