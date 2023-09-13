@@ -415,5 +415,13 @@ def sync(
     exit_if_run_failed(install_cmd.format(filename), dry=dry)
 
 
+@cli.command()
+def test(
+    dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
+):
+    cmd = 'coverage run -m pytest -s && coverage report --omit="tests/*" -m'
+    exit_if_run_failed(cmd, dry=dry)
+
+
 if __name__ == "__main__":
     cli()
