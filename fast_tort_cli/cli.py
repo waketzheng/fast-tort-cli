@@ -354,6 +354,13 @@ def lint():
     _lint(sys.argv[1:])
 
 
+@cli.command(name="check")
+def check_only(
+    dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
+):
+    _lint(sys.argv[1:], True, True, dry=dry)
+
+
 def check():
     _lint(sys.argv[1:], True, True)
 
