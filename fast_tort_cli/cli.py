@@ -1,3 +1,4 @@
+import abc
 import os
 import subprocess
 import sys
@@ -91,35 +92,85 @@ def exit_if_run_failed(cmd: str, env=None, _exit=False, dry=False, **kw) -> None
         raise typer.Exit(rc)
 
 
-class PartChoices(StrEnum):
-    patch = "patch"
-    minor = "minor"
-    major = "major"
+class DryRun(abc.ABC):
+    def __init__(self, _exit=False, dry=False):
+        self.dry = dry
+        self._exit = _exit
+
+    @abc.abstractmethod
+    def gen(self) -> str:
+        raise NotImplementedError
+
+    def run(self) -> None:
+        exit_if_run_failed(self.gen(), _exit=self._exit, dry=self.dry)
 
 
-def get_part(s: str) -> str:
-    choices: dict[str, str] = {}
-    for i, p in enumerate(PartChoices, 1):
-        v = str(p)
-        choices.update({str(i): v, v: v})
-    try:
-        return choices[s]
-    except KeyError as e:
-        echo(f"Invalid part: {s!r}")
-        if "typer" not in locals():
-            sys.exit(1)
-        raise typer.Exit(1) from e
+class BumpUp(DryRun):
+    class PartChoices(StrEnum):
+        patch = "patch"
+        minor = "minor"
+        major = "major"
+
+    def __init__(self, commit: bool, part: str, filename=TOML_FILE, dry=False):
+        self.commit = commit
+        self.part = part
+        self.filename = filename
+        super().__init__(dry=dry)
+
+    def get_part(self, s: str) -> str:
+        choices: dict[str, str] = {}
+        for i, p in enumerate(self.PartChoices, 1):
+            v = str(p)
+            choices.update({str(i): v, v: v})
+        try:
+            return choices[s]
+        except KeyError as e:
+            echo(f"Invalid part: {s!r}")
+            if "typer" not in locals():
+                sys.exit(1)
+            raise typer.Exit(1) from e
+
+    def gen(self) -> str:
+        version = get_current_version()
+        filename = self.filename
+        echo(f"Current version(@{filename}): {version}")
+        if self.part:
+            part = self.get_part(self.part)
+        else:
+            tip = "Which one?"
+            if a := input(tip).strip():
+                part = self.get_part(a)
+            else:
+                part = "patch"
+        self.part = part
+        parse = r'"(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)"'
+        cmd = f"bumpversion --parse {parse} --current-{version=} {part} {filename}"
+        if self.commit:
+            if part != "patch":
+                cmd += " --tag"
+            cmd += " --commit && git push && git push --tags && git log -1"
+        else:
+            cmd += " --allow-dirty"
+        return cmd
+
+    def run(self) -> None:
+        super().run()
+        if not self.commit and not self.dry:
+            new_version = get_current_version(True)
+            echo(new_version)
+            if self.part != "patch":
+                echo("You may want to pin tag by `fast tag`")
 
 
 @cli.command(name="bump")
 def bump_version(
-    part: PartChoices,
+    part: BumpUp.PartChoices,
     commit: bool = Option(
         False, "--commit", "-c", help="Whether run `git commit` after version changed"
     ),
     dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
-    return _bump(commit, part.value, dry=dry)
+    return BumpUp(commit, part.value, dry=dry).run()
 
 
 def bump():
@@ -131,34 +182,7 @@ def bump():
             if not a.startswith("-"):
                 part = a
                 break
-    return _bump(commit, part, dry="--dry" in args)
-
-
-def _bump(commit: bool, part: str, filename=TOML_FILE, dry=False):
-    version = get_current_version()
-    echo(f"Current version(@{filename}): {version}")
-    if part:
-        part = get_part(part)
-    else:
-        tip = "Which one?"
-        if a := input(tip).strip():
-            part = get_part(a)
-        else:
-            part = "patch"
-    parse = r'"(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)"'
-    cmd = f"bumpversion --parse {parse} --current-version {version} {part} {filename}"
-    if commit:
-        if part != "patch":
-            cmd += " --tag"
-        cmd += " --commit && git push && git push --tags && git log -1"
-    else:
-        cmd += " --allow-dirty"
-    exit_if_run_failed(cmd, dry=dry)
-    if not commit and not dry:
-        new_version = get_current_version(True)
-        echo(new_version)
-        if part != "patch":
-            echo("You may want to pin tag by `fast tag`")
+    return BumpUp(commit, part, dry="--dry" in args).run()
 
 
 class Project:
@@ -198,7 +222,7 @@ class Project:
         return toml_file.read_text("utf8")
 
 
-class UpgradeDependencies(Project):
+class UpgradeDependencies(Project, DryRun):
     class DevFlag(StrEnum):
         new = "[tool.poetry.group.dev.dependencies]"
         old = "[tool.poetry.dev-dependencies]"
@@ -313,13 +337,16 @@ class UpgradeDependencies(Project):
             upgrade += f" && poetry add {' '.join(single)}"
         return upgrade
 
+    def gen(self) -> str:
+        return self.gen_cmd()
+
 
 @cli.command()
 def upgrade(
     dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
     """Upgrade dependencies in pyproject.toml to latest versions"""
-    exit_if_run_failed(UpgradeDependencies.gen_cmd(), dry=dry)
+    UpgradeDependencies(dry=dry).run()
 
 
 @cli.command()
@@ -342,12 +369,11 @@ def tag(
         echo("You may want to publish package:\n poetry publish --build")
 
 
-class LintCode:
+class LintCode(DryRun):
     def __init__(self, args, check_only=False, _exit=False, dry=False):
         self.args = args
         self.check_only = check_only
-        self._exit = _exit
-        self.dry = dry
+        super().__init__(_exit, dry)
 
     def gen(self) -> str:
         cmd = ""
@@ -379,9 +405,6 @@ class LintCode:
         cmd += lint_them.format(prefix, paths, *tools)
         return cmd
 
-    def run(self) -> None:
-        exit_if_run_failed(self.gen(), _exit=self._exit, dry=self.dry)
-
 
 def lint(files=None, dry=False):
     if files is None:
@@ -412,7 +435,7 @@ def make_style(
 def check_only(
     dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
-    LintCode(".", True, True, dry=dry).run()
+    check(dry=dry)
 
 
 @cli.command()
