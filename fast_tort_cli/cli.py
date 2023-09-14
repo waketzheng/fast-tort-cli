@@ -9,8 +9,9 @@ try:
     from typer import Option, echo
 
     cli = typer.Typer()
-    if len(sys.argv) == 2 and sys.argv[1] == "lint":
-        sys.argv.append(".")
+    if len(sys.argv) >= 2 and sys.argv[1] == "lint":
+        if not [i for i in sys.argv[2:] if not i.startswith("-")]:
+            sys.argv.append(".")
 except ModuleNotFoundError:
     import click
     from click import echo
