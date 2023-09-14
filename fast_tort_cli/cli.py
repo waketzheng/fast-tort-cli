@@ -53,6 +53,12 @@ except ModuleNotFoundError:
 TOML_FILE = "pyproject.toml"
 
 
+def load_bool(name: str, default=False) -> bool:
+    if not (v := os.getenv(name)):
+        return default
+    return v.lower() not in ("0", "false", "off", "no", "n")
+
+
 def run_and_echo(cmd: str, dry=False, **kw) -> int:
     echo(f"--> {cmd}")
     if dry:
@@ -336,6 +342,57 @@ def tag(
         echo("You may want to publish package:\n poetry publish --build")
 
 
+class LintCode:
+    def __init__(self, args, check_only=False, _exit=False, dry=False):
+        self.args = args
+        self.check_only = check_only
+        self._exit = _exit
+        self.dry = dry
+
+    def gen(self) -> str:
+        cmd = ""
+        paths = "."
+        if self.args:
+            paths = " ".join(self.args)
+        tools = ["isort", "black", "ruff --fix", "mypy"]
+        if self.check_only:
+            tools[0] += " --check-only"
+            tools[1] += " --check --fast"
+            tools[2] = tools[2].split()[0]
+        elif load_bool("NO_FIX"):
+            tools[2] = tools[2].split()[0]
+        if load_bool("SKIP_MYPY"):
+            # Sometimes mypy is too slow
+            tools = tools[:-1]
+        lint_them = " && ".join("{0}{%d} {1}" % i for i in range(2, len(tools) + 2))
+        root = Project.get_work_dir()
+        app_name = root.name.replace("-", "_")
+        if (app_dir := root / app_name).exists() or (app_dir := root / "app").exists():
+            if (current_path := Path.cwd()) == app_dir:
+                tools[0] += " --src=."
+            elif current_path == root:
+                tools[0] += f" --src={app_dir.name}"
+            else:
+                tools[0] += f" --src={app_dir}"
+        is_in_virtual_environment = False  # todo
+        prefix = "" if is_in_virtual_environment else "poetry run "
+        cmd += lint_them.format(prefix, paths, *tools)
+        return cmd
+
+    def run(self) -> None:
+        exit_if_run_failed(self.gen(), _exit=self._exit, dry=self.dry)
+
+
+def lint(files=None, dry=False):
+    if files is None:
+        files = sys.argv[1:]
+    LintCode(files, dry=dry).run()
+
+
+def check(dry=False):
+    LintCode(sys.argv[1:], check_only=True, _exit=True, dry=dry).run()
+
+
 @cli.command(name="lint")
 def make_style(
     files: list[str],
@@ -346,61 +403,16 @@ def make_style(
     if isinstance(files, str):
         files = [files]
     if check_only:
-        _lint(files, True, True, dry=dry)
+        check(dry=dry)
     else:
-        _lint(files, dry=dry)
-
-
-def lint():
-    _lint(sys.argv[1:])
+        lint(files, dry=dry)
 
 
 @cli.command(name="check")
 def check_only(
     dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
-    _lint(".", True, True, dry=dry)
-
-
-def check():
-    _lint(sys.argv[1:], True, True)
-
-
-def load_bool(name: str, default=False) -> bool:
-    if not (v := os.getenv(name)):
-        return default
-    return v.lower() not in ("0", "false", "off", "no", "n")
-
-
-def _lint(args, check_only=False, _exit=False, dry=False):
-    cmd = ""
-    paths = "."
-    if args:
-        paths = " ".join(args)
-    tools = ["isort", "black", "ruff --fix", "mypy"]
-    if check_only:
-        tools[0] += " --check-only"
-        tools[1] += " --check --fast"
-        tools[2] = tools[2].split()[0]
-    elif load_bool("NO_FIX"):
-        tools[2] = tools[2].split()[0]
-    if load_bool("SKIP_MYPY"):
-        # Sometimes mypy is too slow
-        tools = tools[-1]
-    lint_them = " && ".join("{0}{%d} {1}" % i for i in range(2, len(tools) + 2))
-    root = Project.get_work_dir()
-    app_name = root.name.replace("-", "_")
-    if (app_dir := root / app_name).exists() or (app_dir := root / "app").exists():
-        if (current_path := Path.cwd()) == app_dir:
-            tools[0] += " --src=."
-        elif current_path == root:
-            tools[0] += f" --src={app_dir.name}"
-        else:
-            tools[0] += f" --src={app_dir}"
-    is_in_virtual_environment = False
-    prefix = "" if is_in_virtual_environment else "poetry run "
-    cmd += lint_them.format(prefix, paths, *tools)
-    exit_if_run_failed(cmd, _exit=_exit, dry=dry)
+    LintCode(".", True, True, dry=dry).run()
 
 
 @cli.command()
