@@ -139,7 +139,7 @@ def _bump(commit: bool, part: str, filename=TOML_FILE, dry=False):
             part = get_part(a)
         else:
             part = "patch"
-    parse = '"(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)"'
+    parse = r'"(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)"'
     cmd = f"bumpversion --parse {parse} --current-version {version} {part} {filename}"
     if commit:
         if part != "patch":

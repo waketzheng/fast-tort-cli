@@ -931,4 +931,4 @@ all = ["black", "bumpversion", "coverage", "isort", "mypy", "pytest", "ruff", "t
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "3f9e2d15838baa7b62fb1a3dada124cec4a16ed72f3a7964338872f155e3ee0d"
+content-hash = "5c1f4904546ce674d386ecd2325adc8fa676898b69646095f6d1b91625707d50"

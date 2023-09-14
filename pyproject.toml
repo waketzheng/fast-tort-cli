@@ -23,6 +23,7 @@ pytest = {version = "^7.4.2", optional = true}
 all = ["isort", "black", "ruff", "typer", "mypy", "bumpversion", "pytest", "coverage"]
 
 [tool.poetry.group.dev.dependencies]
+anyio = "*"
 isort = "*"
 black = "*"
 ruff = "*"
@@ -31,7 +32,6 @@ pytest = "*"
 coverage = "*"
 bumpversion = "*"
 typer = {extras = ["all"], version = "*"}
-anyio = ">=3.7.1"
 ipython = "^8.15.0"
 coveralls = "^3.3.1"
 
