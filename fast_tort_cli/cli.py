@@ -5,13 +5,18 @@ import sys
 from enum import StrEnum
 from pathlib import Path
 
+
+def parse_files(args: list[str]) -> list[str]:
+    return [i for i in args if not i.startswith("-")]
+
+
 try:
     import typer
     from typer import Option, echo
 
     cli = typer.Typer()
     if len(sys.argv) >= 2 and sys.argv[1] == "lint":
-        if not [i for i in sys.argv[2:] if not i.startswith("-")]:
+        if not parse_files(sys.argv[2:]):
             sys.argv.append(".")
 except ModuleNotFoundError:
     import click
@@ -29,7 +34,7 @@ except ModuleNotFoundError:
                 def auto_fill_args(func):
                     @functools.wraps(func)
                     def runner(*arguments, **kw):
-                        if not arguments and "files" not in kw:
+                        if "files" not in kw and not parse_files(arguments):
                             arguments = (".",)
                         return func(*arguments, **kw)
 
@@ -408,12 +413,12 @@ class LintCode(DryRun):
 
 def lint(files=None, dry=False):
     if files is None:
-        files = sys.argv[1:]
+        files = parse_files(sys.argv[1:])
     LintCode(files, dry=dry).run()
 
 
-def check(dry=False):
-    LintCode(sys.argv[1:], check_only=True, _exit=True, dry=dry).run()
+def check(files=None, dry=False):
+    LintCode(files, check_only=True, _exit=True, dry=dry).run()
 
 
 @cli.command(name="lint")
@@ -426,7 +431,7 @@ def make_style(
     if isinstance(files, str):
         files = [files]
     if check_only:
-        check(dry=dry)
+        check(files, dry=dry)
     else:
         lint(files, dry=dry)
 
