@@ -11,7 +11,7 @@ def test_test(mocker):
         and 'coverage report --omit="tests/*" -m' in output
     )
 
-    mocker.patch("fast_tort_cli.cli.is_venv", return_value=False)
+    mocker.patch("fast_tort_cli.cli.is_venv", return_value=True)
     with capture_stdout() as stream:
         test(dry=True)
     assert (
