@@ -12,6 +12,12 @@
 <a href="https://pypi.org/project/fast-tort-cli" target="_blank">
     <img src="https://img.shields.io/pypi/pyversions/fast-tort-cli.svg?color=%2334D058" alt="Supported Python versions">
 </a>
+<a href="https://github.com/waketzheng/fast-tort-cli/actions?query=workflow:ci" target="_blank">
+    <img src="https://github.com/waketzheng/fast-tort-cli/workflows/ci/badge.svg" alt="GithubActionResult">
+</a>
+<a href="https://coveralls.io/github/waketzheng/fast-tort-cli?branch=main" target="_blank">
+    <img src="https://coveralls.io/repos/github/waketzheng/fast-tort-cli/badge.svg?branch=main" alt="Coverage Status">
+</a>
 </p>
 
 ---
