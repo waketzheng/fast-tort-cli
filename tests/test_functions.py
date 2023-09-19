@@ -1,5 +1,5 @@
 import os
-from contextlib import chdir, redirect_stdout
+from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 
@@ -57,24 +57,22 @@ def test_utils():
 
 def test_run_shell():
     # current version
-    root = Path(__file__).parent.parent
-    with chdir(root):
-        version = get_current_version()
-        assert version in Path(TOML_FILE).read_text()
-        stream = StringIO()
-        write_to_stream = redirect_stdout(stream)
-        with write_to_stream:
-            get_current_version(True)
-        assert "poetry version -s" in stream.getvalue()
+    version = get_current_version()
+    assert version in Path(TOML_FILE).read_text()
+    stream = StringIO()
+    write_to_stream = redirect_stdout(stream)
+    with write_to_stream:
+        get_current_version(True)
+    assert "poetry version -s" in stream.getvalue()
 
-        name = "TEST_EXIT_IF_RUN_FAILED"
-        value = "foo"
-        cmd = 'python -c "import os;print(list(os.environ))"'
-        with redirect_stdout(StringIO()):
-            r = exit_if_run_failed(cmd, env={name: value}, capture_output=True)
-        assert name in r.stdout.decode()
+    name = "TEST_EXIT_IF_RUN_FAILED"
+    value = "foo"
+    cmd = 'python -c "import os;print(list(os.environ))"'
+    with redirect_stdout(StringIO()):
+        r = exit_if_run_failed(cmd, env={name: value}, capture_output=True)
+    assert name in r.stdout.decode()
 
-        assert run_and_echo("echo foo", capture_output=True) == 0
+    assert run_and_echo("echo foo", capture_output=True) == 0
 
     with pytest.raises(SystemExit):
         exit_if_run_failed("in_valid_command", _exit=True, capture_output=True)
