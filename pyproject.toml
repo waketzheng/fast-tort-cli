@@ -34,6 +34,7 @@ bumpversion = "*"
 typer = {extras = ["all"], version = "*"}
 ipython = "^8.15.0"
 coveralls = "^3.3.1"
+pytest-mock = "^3.11.1"
 
 [build-system]
 requires = ["poetry-core"]
@@ -42,6 +43,12 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.scripts]
 fast = "fast_tort_cli:cli"
 
+[tool.isort]
+profile = "black"
+
 [tool.mypy]
 pretty = true
 ignore_missing_imports = true
+
+[tool.ruff.per-file-ignores]
+"test_*.py" = ["E501"]

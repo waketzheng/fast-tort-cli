@@ -1,9 +1,10 @@
-import abc
 import os
 import subprocess
 import sys
 from enum import StrEnum
+from functools import cached_property
 from pathlib import Path
+from subprocess import CompletedProcess
 
 
 def parse_files(args: list[str]) -> list[str]:
@@ -12,7 +13,7 @@ def parse_files(args: list[str]) -> list[str]:
 
 try:
     import typer
-    from typer import Option, echo
+    from typer import Exit, Option, echo
 
     cli = typer.Typer()
     if len(sys.argv) >= 2 and sys.argv[1] == "lint":
@@ -21,10 +22,13 @@ try:
 except ModuleNotFoundError:
     import click
     from click import echo
-    from click import option as Option  # type:ignore
-    from click.core import Group
+    from click.core import Group as _Group
+    from click.exceptions import Exit
 
-    def command(self, *args, **kwargs):
+    def Option(default, *shortcuts, help=None):  # type:ignore[no-redef]
+        return default
+
+    def _command(self, *args, **kwargs):
         from click.decorators import command
 
         def decorator(f):
@@ -49,11 +53,11 @@ except ModuleNotFoundError:
 
         return decorator
 
-    Group.command = command  # type:ignore
+    _Group.command = _command  # type:ignore
 
     @click.group()
     def cli() -> None:
-        pass
+        ...  # pragma: no cover
 
 
 TOML_FILE = "pyproject.toml"
@@ -65,12 +69,29 @@ def load_bool(name: str, default=False) -> bool:
     return v.lower() not in ("0", "false", "off", "no", "n")
 
 
-def run_and_echo(cmd: str, dry=False, **kw) -> int:
-    echo(f"--> {cmd}")
+def is_venv() -> bool:
+    """Whether in a virtual environment(also work for poetry)"""
+    return hasattr(sys, "real_prefix") or (
+        hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
+    )
+
+
+def _run_shell(cmd: str, **kw) -> CompletedProcess:
+    kw.setdefault("shell", True)
+    return subprocess.run(cmd, **kw)
+
+
+def run_and_echo(cmd: str, dry=False, verbose=True, **kw) -> int:
+    if verbose:
+        echo(f"--> {cmd}")
     if dry:
         return 0
-    kw.setdefault("shell", True)
-    return subprocess.run(cmd, **kw).returncode
+    return _run_shell(cmd, **kw).returncode
+
+
+def check_call(cmd: str) -> bool:
+    r = _run_shell(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return r.returncode == 0
 
 
 def capture_cmd_output(command: list[str] | str, **kw) -> str:
@@ -88,21 +109,27 @@ def get_current_version(verbose=False) -> str:
     return capture_cmd_output(cmd)
 
 
-def exit_if_run_failed(cmd: str, env=None, _exit=False, dry=False, **kw) -> None:
+def exit_if_run_failed(
+    cmd: str, env=None, _exit=False, dry=False, **kw
+) -> CompletedProcess:
+    run_and_echo(cmd, dry=True)
+    if dry:
+        return CompletedProcess("", 0)
     if env is not None:
         env = {**os.environ, **env}
-    if rc := run_and_echo(cmd, env=env, dry=dry, **kw):
-        if _exit or "typer" not in locals():
+    r = _run_shell(cmd, env=env, **kw)
+    if rc := r.returncode:
+        if _exit:
             sys.exit(rc)
-        raise typer.Exit(rc)
+        raise Exit(rc)
+    return r
 
 
-class DryRun(abc.ABC):
+class DryRun:
     def __init__(self, _exit=False, dry=False):
         self.dry = dry
         self._exit = _exit
 
-    @abc.abstractmethod
     def gen(self) -> str:
         raise NotImplementedError
 
@@ -131,9 +158,7 @@ class BumpUp(DryRun):
             return choices[s]
         except KeyError as e:
             echo(f"Invalid part: {s!r}")
-            if "typer" not in locals():
-                sys.exit(1)
-            raise typer.Exit(1) from e
+            raise Exit(1) from e
 
     def gen(self) -> str:
         version = get_current_version()
@@ -227,6 +252,12 @@ class Project:
         return toml_file.read_text("utf8")
 
 
+class ParseError(Exception):
+    """Raise this if parse dependence line error"""
+
+    ...
+
+
 class UpgradeDependencies(Project, DryRun):
     class DevFlag(StrEnum):
         new = "[tool.poetry.group.dev.dependencies]"
@@ -234,9 +265,26 @@ class UpgradeDependencies(Project, DryRun):
 
     @staticmethod
     def parse_value(version_info: str, key: str) -> str:
+        """Pick out the value for key in version info.
+
+        Example::
+            >>> s= 'typer = {extras = ["all"], version = "^0.9.0", optional = true}'
+            >>> parse_value(s, 'extras')
+            'all'
+            >>> parse_value(s, 'optional')
+            'true'
+            >>> parse_value(s, 'version')
+            '^0.9.0'
+        """
         sep = key + " = "
-        rest = version_info.split(sep, 1)[-1].strip(" =").split(",", 1)[0]
-        return rest.split("}")[0].strip().strip('[]"')
+        rest = version_info.split(sep, 1)[-1].strip(" =")
+        if rest.startswith("["):
+            rest = rest[1:].split("]")[0]
+        elif rest.startswith('"'):
+            rest = rest[1:].split('"')[0]
+        else:
+            rest = rest.split(",")[0].split("}")[0]
+        return rest.strip().replace('"', "")
 
     @staticmethod
     def no_need_upgrade(version_info: str, line: str) -> bool:
@@ -248,8 +296,8 @@ class UpgradeDependencies(Project, DryRun):
         if v == "*":
             echo(f"Skip wildcard line: {line}")
             return True
-        elif v.startswith(">") or v.startswith("<"):
-            echo(f"Ignore bigger and smaller: {line}")
+        elif v.startswith(">") or v.startswith("<") or v[0].isdigit():
+            echo(f"Ignore bigger/smaller/equal: {line}")
             return True
         return False
 
@@ -265,7 +313,7 @@ class UpgradeDependencies(Project, DryRun):
             try:
                 package, version_info = m.split("=", 1)
             except ValueError as e:
-                raise Exception(f"{m = }") from e
+                raise ParseError(f"{m = }") from e
             if (package := package.strip()).lower() == "python":
                 continue
             if cls.no_need_upgrade(version_info := version_info.strip(' "'), line):
@@ -300,19 +348,23 @@ class UpgradeDependencies(Project, DryRun):
             if (line := line.strip()).startswith("["):
                 if lines:
                     break
-            else:
+            elif line:
                 lines.append(line)
         return lines
 
     @classmethod
-    def get_args(cls) -> tuple[list[str], list[str], list[list[str]], str]:
-        others: list[list[str]] = []
+    def get_args(
+        cls, toml_text: str | None = None
+    ) -> tuple[list[str], list[str], list[list[str]], str]:
+        if toml_text is None:
+            toml_text = cls.load_toml_text()
         main_title = "[tool.poetry.dependencies]"
-        text = cls.load_toml_text().split(main_title)[-1]
+        text = toml_text.split(main_title)[-1]
         dev_flag = "--group dev"
         if (dev_title := cls.DevFlag.new.value) not in text:
             dev_title = cls.DevFlag.old.value  # For poetry<=1.2
             dev_flag = "--dev"
+        others: list[list[str]] = []
         try:
             main_toml, dev_toml = text.split(dev_title)
         except ValueError:
@@ -330,6 +382,15 @@ class UpgradeDependencies(Project, DryRun):
     @classmethod
     def gen_cmd(cls) -> str:
         main_args, dev_args, others, dev_flags = cls.get_args()
+        return cls.to_cmd(main_args, dev_args, others, dev_flags)
+
+    @staticmethod
+    def to_cmd(
+        main_args: list[str],
+        dev_args: list[str],
+        others: list[list[str]],
+        dev_flags: str,
+    ) -> str:
         command = "poetry add "
         upgrade = ""
         if main_args:
@@ -354,24 +415,41 @@ def upgrade(
     UpgradeDependencies(dry=dry).run()
 
 
+class GitTag(DryRun):
+    def __init__(self, message, dry):
+        self.message = message
+        super().__init__(dry=dry)
+
+    def gen(self):
+        version = get_current_version(verbose=False)
+        cmd = f"git tag -a {version} -m {self.message!r} && git push --tags"
+        if "git push" in self.git_status:
+            cmd += " && git push"
+        return cmd
+
+    @cached_property
+    def git_status(self) -> str:
+        return capture_cmd_output("git status")
+
+    def mark_tag(self) -> bool:
+        if "working tree clean" not in self.git_status:
+            run_and_echo("git status")
+            echo("ERROR: Please run git commit to make sure working tree is clean!")
+            return False
+        return bool(super().run())
+
+    def run(self):
+        if self.mark_tag() and not self.dry:
+            echo("You may want to publish package:\n poetry publish --build")
+
+
 @cli.command()
 def tag(
     message: str = Option("", "-m", "--message"),
     dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
     """Run shell command: git tag -a <current-version-in-pyproject.toml> -m {message}"""
-    gs = capture_cmd_output("git status")
-    if "working tree clean" not in gs:
-        run_and_echo("git status")
-        echo("ERROR: Please run git commit to make sure working tree is clean!")
-        return
-    version = get_current_version(verbose=False)
-    cmd = f"git tag -a {version} -m {message!r} && git push --tags"
-    if "git push" in gs:
-        cmd += " && git push"
-    exit_if_run_failed(cmd, dry=dry)
-    if not dry:
-        echo("You may want to publish package:\n poetry publish --build")
+    GitTag(message, dry=dry).run()
 
 
 class LintCode(DryRun):
@@ -380,13 +458,11 @@ class LintCode(DryRun):
         self.check_only = check_only
         super().__init__(_exit, dry)
 
-    def gen(self) -> str:
+    @staticmethod
+    def to_cmd(paths=".", check_only=False):
         cmd = ""
-        paths = "."
-        if self.args:
-            paths = " ".join(self.args)
         tools = ["isort", "black", "ruff --fix", "mypy"]
-        if self.check_only:
+        if check_only:
             tools[0] += " --check-only"
             tools[1] += " --check --fast"
             tools[2] = tools[2].split()[0]
@@ -404,11 +480,19 @@ class LintCode(DryRun):
             elif current_path == root:
                 tools[0] += f" --src={app_dir.name}"
             else:
-                tools[0] += f" --src={app_dir}"
-        is_in_virtual_environment = False  # todo
-        prefix = "" if is_in_virtual_environment else "poetry run "
+                parents = "../"
+                for i, p in enumerate(current_path.parents):
+                    if p == root:
+                        parents *= i + 1
+                        break
+                tools[0] += f" --src={parents}{app_dir.name}"
+        prefix = "" if is_venv() and check_call("black --version") else "poetry run "
         cmd += lint_them.format(prefix, paths, *tools)
         return cmd
+
+    def gen(self) -> str:
+        paths = " ".join(self.args) if self.args else "."
+        return self.to_cmd(paths, self.check_only)
 
 
 def lint(files=None, dry=False):
@@ -443,6 +527,29 @@ def check_only(
     check(dry=dry)
 
 
+class Sync(DryRun):
+    def __init__(self, filename: str, extras: str, save: bool, dry=False):
+        self.filename = filename
+        self.extras = extras
+        self._save = save
+        super().__init__(dry=dry)
+
+    def gen(self) -> str:
+        extras, save = self.extras, self._save
+        should_remove = not Path.cwd().joinpath(self.filename).exists()
+        install_cmd = (
+            "poetry export --with=dev --without-hashes -o {0}"
+            " && poetry run pip install -r {0}"
+        )
+        if not UpgradeDependencies.should_with_dev():
+            install_cmd = install_cmd.replace(" --with=dev", "")
+        if extras and isinstance(extras, str | list):
+            install_cmd = install_cmd.replace("export", f"export --{extras=}")
+        if should_remove and not save:
+            install_cmd += " && rm -f {0}"
+        return install_cmd.format(self.filename)
+
+
 @cli.command()
 def sync(
     filename="dev_requirements.txt",
@@ -452,18 +559,7 @@ def sync(
     ),
     dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
-    should_remove = not Path.cwd().joinpath(filename).exists()
-    install_cmd = (
-        "poetry export --with=dev --without-hashes -o {0}"
-        " && poetry run pip install -r {0}"
-    )
-    if not UpgradeDependencies.should_with_dev():
-        install_cmd = install_cmd.replace(" --with=dev", "")
-    if extras and isinstance(extras, str | list):
-        install_cmd = install_cmd.replace("export", f"export --{extras=}")
-    if should_remove and not save:
-        install_cmd += " && rm -f {0}"
-    exit_if_run_failed(install_cmd.format(filename), dry=dry)
+    Sync(filename, extras, save, dry=dry).run()
 
 
 @cli.command()
@@ -471,8 +567,11 @@ def test(
     dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
     cmd = 'coverage run -m pytest -s && coverage report --omit="tests/*" -m'
+    if not is_venv() or not check_call("coverage --version"):
+        sep = " && "
+        cmd = sep.join("poetry run " + i for i in cmd.split(sep))
     exit_if_run_failed(cmd, dry=dry)
 
 
 if __name__ == "__main__":
-    cli()
+    cli()  # pragma: no cover
