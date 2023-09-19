@@ -17,23 +17,38 @@ def mock_skip_mypy(monkeypatch):
     monkeypatch.setenv("SKIP_MYPY", "1")
 
 
+def test_check():
+    command = capture_cmd_output("fast check --dry")
+    assert (
+        "isort --check-only --src=fast_tort_cli . && " in command
+        and "black --check --fast . && " in command
+        and "ruff . && " in command
+        and "mypy ." in command
+    )
+
+
 def test_lint_cmd():
-    root = Path(__file__).parent.parent
-    with chdir(root):
-        assert (
-            capture_cmd_output("poetry run python fast_tort_cli/cli.py lint . --dry")
-            == capture_cmd_output("poetry run python fast_tort_cli/cli.py lint --dry")
-            == capture_cmd_output("poetry run fast lint --dry")
-            == ("--> isort --src=fast_tort_cli . && black . && ruff --fix . && mypy .")
-        )
-        assert (
-            capture_cmd_output("poetry run python fast_tort_cli/cli.py lint .")
-            == capture_cmd_output("poetry run python fast_tort_cli/cli.py lint")
-            == capture_cmd_output("poetry run fast lint")
-        )
+    command = capture_cmd_output("poetry run python fast_tort_cli/cli.py lint . --dry")
+    assert (
+        capture_cmd_output("poetry run python fast_tort_cli/cli.py lint --dry")
+        == capture_cmd_output("poetry run fast lint --dry")
+        == command
+    )
+    assert (
+        "isort --src=fast_tort_cli . && " in command
+        and "black . && " in command
+        and "ruff --fix . && " in command
+        and "mypy ." in command
+    )
+    assert (
+        capture_cmd_output("poetry run python fast_tort_cli/cli.py lint .")
+        == capture_cmd_output("poetry run python fast_tort_cli/cli.py lint")
+        == capture_cmd_output("poetry run fast lint")
+    )
 
 
-def test_make_style():
+def test_make_style(mocker):
+    mocker.patch("fast_tort_cli.cli.is_venv", return_value=True)
     with capture_stdout() as stream:
         make_style(".", check_only=False, dry=True)
     assert (
@@ -54,7 +69,8 @@ def test_make_style():
     )
 
 
-def test_lint_class():
+def test_lint_class(mocker):
+    mocker.patch("fast_tort_cli.cli.is_venv", return_value=True)
     assert LintCode(".").gen() == (
         "isort --src=fast_tort_cli . && black . && ruff --fix . && mypy ."
     )
@@ -64,7 +80,8 @@ def test_lint_class():
     )
 
 
-def test_lint_func():
+def test_lint_func(mocker):
+    mocker.patch("fast_tort_cli.cli.is_venv", return_value=True)
     with capture_stdout() as stream:
         lint(".", dry=True)
     assert (
@@ -79,19 +96,22 @@ def test_lint_func():
     )
 
 
-def test_no_fix(mock_no_fix):
+def test_no_fix(mock_no_fix, mocker):
+    mocker.patch("fast_tort_cli.cli.is_venv", return_value=True)
     assert LintCode(".").gen() == (
         "isort --src=fast_tort_cli . && black . && ruff . && mypy ."
     )
 
 
-def test_skip_mypy(mock_skip_mypy):
+def test_skip_mypy(mock_skip_mypy, mocker):
+    mocker.patch("fast_tort_cli.cli.is_venv", return_value=True)
     assert LintCode(".").gen() == (
         "isort --src=fast_tort_cli . && black . && ruff --fix ."
     )
 
 
-def test_not_in_root():
+def test_not_in_root(mocker):
+    mocker.patch("fast_tort_cli.cli.is_venv", return_value=True)
     root = Path(__file__).parent.parent
     with chdir(root / "fast_tort_cli"):
         assert (
