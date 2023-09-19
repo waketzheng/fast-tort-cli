@@ -96,13 +96,15 @@ def test_lint_func(mocker):
     )
 
 
-def test_no_fix(mock_no_fix):
+def test_no_fix(mock_no_fix, mocker):
+    mocker.patch("fast_tort_cli.cli.is_venv", return_value=True)
     assert LintCode(".").gen() == (
         "isort --src=fast_tort_cli . && black . && ruff . && mypy ."
     )
 
 
-def test_skip_mypy(mock_skip_mypy):
+def test_skip_mypy(mock_skip_mypy, mocker):
+    mocker.patch("fast_tort_cli.cli.is_venv", return_value=True)
     assert LintCode(".").gen() == (
         "isort --src=fast_tort_cli . && black . && ruff --fix ."
     )
