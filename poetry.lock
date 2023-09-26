@@ -748,6 +748,25 @@ pytest = ">=5.0"
 dev = ["pre-commit", "pytest-asyncio", "tox"]
 
 [[package]]
+name = "pytest-subprocess"
+version = "1.5.0"
+description = "A plugin to fake subprocess for pytest"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "pytest-subprocess-1.5.0.tar.gz", hash = "sha256:d7693b96f588f39b84c7b2b5c04287459246dfae6be1dd4098937a728ad4fbe3"},
+    {file = "pytest_subprocess-1.5.0-py3-none-any.whl", hash = "sha256:dfd75b10af6800a89a9b758f2e2eceff9de082a27bd1388521271b6e8bde298b"},
+]
+
+[package.dependencies]
+pytest = ">=4.0.0"
+
+[package.extras]
+dev = ["changelogd", "nox"]
+docs = ["changelogd", "furo", "sphinx", "sphinx-autodoc-typehints", "sphinxcontrib-napoleon"]
+test = ["Pygments (>=2.0)", "anyio", "coverage", "docutils (>=0.12)", "pytest (>=4.0)", "pytest-asyncio (>=0.15.1)", "pytest-rerunfailures"]
+
+[[package]]
 name = "requests"
 version = "2.31.0"
 description = "Python HTTP for Humans."
@@ -948,4 +967,4 @@ all = ["black", "bumpversion", "coverage", "isort", "mypy", "pytest", "ruff", "t
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "bd9d79beb664ec349fd09c5469f51006e62eaec43c827ab7bb422b814791729d"
+content-hash = "b88d4424f6b5ab178f569151f85757aaae71fab98a6f7216f2ad4ff058966ac3"
