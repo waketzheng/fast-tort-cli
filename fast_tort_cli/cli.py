@@ -173,8 +173,8 @@ class BumpUp(DryRun):
             else:
                 part = "patch"
         self.part = part
-        parse = r'"(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)"'
-        cmd = f"bumpversion --parse {parse} --current-{version=} {part} {filename}"
+        parse = r'--parse "(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)"'
+        cmd = f'bumpversion {parse} --current-version="{version}" {part} {filename}'
         if self.commit:
             if part != "patch":
                 cmd += " --tag"

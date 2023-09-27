@@ -27,7 +27,7 @@ def test_bump(
     tmp_path: Path,
 ):
     version = get_current_version()
-    cmd = rf'bumpversion --parse "(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)" --current-{version=}'
+    cmd = rf'bumpversion --parse "(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)" --current-version="{version}"'
     suffix = " --commit && git push && git push --tags && git log -1"
     patch_without_commit = cmd + " patch pyproject.toml --allow-dirty"
     patch_with_commit = cmd + " patch pyproject.toml" + suffix
