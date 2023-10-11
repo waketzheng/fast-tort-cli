@@ -1,3 +1,4 @@
+import importlib.metadata
 import os
 import subprocess
 import sys
@@ -5,6 +6,8 @@ from enum import StrEnum
 from functools import cached_property
 from pathlib import Path
 from subprocess import CompletedProcess
+
+__version__ = importlib.metadata.version(Path(__file__).parent.name)
 
 
 def parse_files(args: list[str]) -> list[str]:
@@ -190,6 +193,12 @@ class BumpUp(DryRun):
             echo(new_version)
             if self.part != "patch":
                 echo("You may want to pin tag by `fast tag`")
+
+
+@cli.command()
+def version():
+    """Show the version of this tool"""
+    echo(__version__)
 
 
 @cli.command(name="bump")
@@ -524,6 +533,7 @@ def make_style(
 def check_only(
     dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
+    """Check code style without reformat"""
     check(dry=dry)
 
 
@@ -559,6 +569,7 @@ def sync(
     ),
     dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
+    """Export dependencies by poetry to a txt file then install by pip."""
     Sync(filename, extras, save, dry=dry).run()
 
 
@@ -566,6 +577,7 @@ def sync(
 def test(
     dry: bool = Option(False, "--dry", help="Only print, not really run shell command"),
 ):
+    """Run unittest by pytest and report coverage"""
     cmd = 'coverage run -m pytest -s && coverage report --omit="tests/*" -m'
     if not is_venv() or not check_call("coverage --version"):
         sep = " && "

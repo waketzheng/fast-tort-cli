@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fast-tort-cli"
-version = "0.3.10"
+version = "0.4.0"
 description = ""
 authors = ["Waket Zheng <waketzheng@gmail.com>"]
 readme = "README.md"
@@ -11,9 +11,9 @@ python = "^3.11"
 click = ">=7.1.1"
 isort = {version = "^5.12.0", optional = true}
 black = {version = "^23.9.1", optional = true}
-ruff = {version = "^0.0.289", optional = true}
+ruff = {version = "^0.0.292", optional = true}
 typer = {extras = ["all"], version = "^0.9.0", optional = true}
-mypy = {version = "^1.5.1", optional = true}
+mypy = {version = "^1.6.0", optional = true}
 anyio = {version = ">=3.7.1", optional = true}
 bumpversion = {version = "^0.6.0", optional = true}
 coverage = {version = ">=6.5.0", optional = true}
@@ -32,7 +32,7 @@ pytest = "*"
 coverage = "*"
 bumpversion = "*"
 typer = {extras = ["all"], version = "*"}
-ipython = "^8.15.0"
+ipython = "^8.16.1"
 coveralls = "^3.3.1"
 pytest-mock = "^3.11.1"
 
