@@ -110,11 +110,6 @@ def test_get_args_hard(tmp_path: Path):
         [
             [
                 "--optional",
-                '"isort@latest"',
-                '"black@latest"',
-                '"ruff@latest"',
-                '"typer[all]@latest"',
-                '"mypy@latest"',
                 '"bumpversion@latest"',
                 '"pytest@latest"',
             ]
@@ -166,7 +161,7 @@ pytest = {version = "^4.0", platform = "linux"}
 
 
 def test_gen_cmd():
-    expected = 'poetry add --group dev "ipython@latest" "coveralls@latest" "pytest-mock@latest" && poetry add --optional "isort@latest" "black@latest" "ruff@latest" "typer[all]@latest" "mypy@latest" "bumpversion@latest" "pytest@latest"'
+    expected = 'poetry add --group dev "ipython@latest" "coveralls@latest" "pytest-mock@latest" && poetry add --optional "bumpversion@latest" "pytest@latest"'
     assert UpgradeDependencies.gen_cmd() == UpgradeDependencies().gen() == expected
     stream = StringIO()
     with redirect_stdout(stream):

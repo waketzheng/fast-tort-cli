@@ -84,7 +84,7 @@ def _run_shell(cmd: str, **kw) -> CompletedProcess:
     return subprocess.run(cmd, **kw)
 
 
-def run_and_echo(cmd: str, dry=False, verbose=True, **kw) -> int:
+def run_and_echo(cmd: str, *, dry=False, verbose=True, **kw) -> int:
     if verbose:
         echo(f"--> {cmd}")
     if dry:
