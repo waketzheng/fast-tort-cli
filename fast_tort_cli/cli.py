@@ -2,6 +2,7 @@ import importlib.metadata
 import os
 import subprocess
 import sys
+import warnings
 from enum import StrEnum
 from functools import cached_property
 from pathlib import Path
@@ -495,7 +496,15 @@ class LintCode(DryRun):
                         parents *= i + 1
                         break
                 tools[0] += f" --src={parents}{app_dir.name}"
-        prefix = "" if is_venv() and check_call("black --version") else "poetry run "
+        prefix = "poetry run "
+        if is_venv():
+            if check_call("black --version"):
+                prefix = ""
+            else:
+                if check_call("python -c 'import fast_tort_cli'"):
+                    command = 'python -m pip install -U "fast_tort_cli[all]"'
+                    tip = "You may need to run the following command to install lint tools"
+                    warnings.warn(f"{tip}:\n  {command}\n")  # TODO: use secho instead
         cmd += lint_them.format(prefix, paths, *tools)
         return cmd
 
