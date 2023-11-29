@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from tests.utils import capture_stdout, temp_file
 
 from fast_tort_cli.cli import GitTag, get_current_version, run_and_echo, tag
@@ -29,8 +31,18 @@ def test_echo_when_not_dry(mocker):
     assert "poetry publish --build" in stream.getvalue()
 
 
+@contextmanager
+def _clear_tags():
+    run_and_echo("git tag | xargs git tag -d")
+    yield
+    run_and_echo("git pull --tags")
+
+
 def test_with_push(mocker):
     git_tag = GitTag("", dry=True)
     mocker.patch.object(git_tag, "git_status", return_value="git push")
     version = get_current_version()
-    assert git_tag.gen() == f"git tag -a {version} -m '' && git push --tags"
+    assert git_tag.gen() == f"git tag -a v{version} -m '' && git push --tags"
+    with _clear_tags():
+        git_tag_cmd = git_tag.gen()
+    assert git_tag_cmd == f"git tag -a {version} -m '' && git push --tags"
