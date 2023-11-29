@@ -2,7 +2,6 @@ import importlib.metadata
 import os
 import subprocess
 import sys
-import warnings
 from enum import StrEnum
 from functools import cached_property
 from pathlib import Path
@@ -17,7 +16,7 @@ def parse_files(args: list[str]) -> list[str]:
 
 try:
     import typer
-    from typer import Exit, Option, echo
+    from typer import Exit, Option, echo, secho
 
     cli = typer.Typer()
     if len(sys.argv) >= 2 and sys.argv[1] == "lint":
@@ -25,7 +24,7 @@ try:
             sys.argv.append(".")
 except ModuleNotFoundError:
     import click
-    from click import echo
+    from click import echo, secho
     from click.core import Group as _Group
     from click.exceptions import Exit
 
@@ -472,7 +471,11 @@ class LintCode(DryRun):
         super().__init__(_exit, dry)
 
     @staticmethod
-    def to_cmd(paths=".", check_only=False):
+    def check_lint_tool_installed() -> bool:
+        return check_call("black --version")
+
+    @classmethod
+    def to_cmd(cls, paths=".", check_only=False):
         cmd = ""
         tools = ["isort", "black", "ruff --fix", "mypy"]
         if check_only:
@@ -501,13 +504,13 @@ class LintCode(DryRun):
                 tools[0] += f" --src={parents}{app_dir.name}"
         prefix = "poetry run "
         if is_venv():
-            if check_call("black --version"):
+            if cls.check_lint_tool_installed():
                 prefix = ""
             else:
                 if check_call("python -c 'import fast_tort_cli'"):
                     command = 'python -m pip install -U "fast_tort_cli[all]"'
                     tip = "You may need to run the following command to install lint tools"
-                    warnings.warn(f"{tip}:\n  {command}\n")  # TODO: use secho instead
+                    secho(f"{tip}:\n\n  {command}\n", fg="yellow")
         cmd += lint_them.format(prefix, paths, *tools)
         return cmd
 

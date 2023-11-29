@@ -96,6 +96,19 @@ def test_lint_func(mocker):
     )
 
 
+def test_lint_without_black_installed(mocker):
+    mocker.patch(
+        "fast_tort_cli.cli.LintCode.check_lint_tool_installed", return_value=False
+    )
+    with capture_stdout() as stream:
+        lint(".", dry=True)
+    output = stream.getvalue()
+    cmd = 'python -m pip install -U "fast_tort_cli[all]"'
+    tip = "You may need to run the following command to install lint tools"
+    assert cmd in output and tip in output
+    assert f"{tip}:\n\n  {cmd}" in output
+
+
 def test_no_fix(mock_no_fix, mocker):
     mocker.patch("fast_tort_cli.cli.is_venv", return_value=True)
     assert LintCode(".").gen() == (
