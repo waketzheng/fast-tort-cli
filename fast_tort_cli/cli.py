@@ -1,5 +1,6 @@
 import importlib.metadata
 import os
+import re
 import subprocess
 import sys
 from enum import StrEnum
@@ -444,7 +445,7 @@ class GitTag(DryRun):
         return capture_cmd_output("git status")
 
     def mark_tag(self) -> bool:
-        if "working tree clean" not in self.git_status:
+        if not re.search(r"working (tree|directory) clean", self.git_status):
             run_and_echo("git status")
             echo("ERROR: Please run git commit to make sure working tree is clean!")
             return False
