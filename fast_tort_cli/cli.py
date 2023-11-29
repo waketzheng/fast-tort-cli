@@ -432,6 +432,9 @@ class GitTag(DryRun):
 
     def gen(self):
         version = get_current_version(verbose=False)
+        if "v" in capture_cmd_output("git tag"):
+            # Add `v` at prefix to compare with bumpversion tool
+            version = "v" + version
         cmd = f"git tag -a {version} -m {self.message!r} && git push --tags"
         if "git push" in self.git_status:
             cmd += " && git push"
