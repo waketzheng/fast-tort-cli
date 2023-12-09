@@ -582,7 +582,7 @@ class Sync(DryRun):
         prefix = "" if is_venv() else "poetry run "
         install_cmd = (
             "poetry export --with=dev --without-hashes -o {0}"
-            f" && {prefix}pip install -r {0}"
+            " && {1}pip install -r {0}"
         )
         if not UpgradeDependencies.should_with_dev():
             install_cmd = install_cmd.replace(" --with=dev", "")
@@ -590,7 +590,7 @@ class Sync(DryRun):
             install_cmd = install_cmd.replace("export", f"export --{extras=}")
         if should_remove and not save:
             install_cmd += " && rm -f {0}"
-        return install_cmd.format(self.filename)
+        return install_cmd.format(self.filename, prefix)
 
 
 @cli.command()

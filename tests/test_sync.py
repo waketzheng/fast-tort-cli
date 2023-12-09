@@ -27,7 +27,8 @@ build-backend = "poetry.core.masonry.api"
 """
 
 
-def test_sync():
+def test_sync_not_in_venv(mocker):
+    mocker.patch("fast_tort_cli.cli.is_venv", return_value=False)
     assert (
         Sync("req.txt", "", True, dry=True).gen()
         == "poetry export --with=dev --without-hashes -o req.txt && poetry run pip install -r req.txt"
@@ -42,3 +43,18 @@ def test_sync():
     with capture_stdout() as stream:
         sync(extras="all", save=False, dry=True)
     assert "pip install -r" in stream.getvalue()
+
+
+def test_sync(mocker):
+    mocker.patch("fast_tort_cli.cli.is_venv", return_value=True)
+    assert (
+        Sync("req.txt", "", True, dry=True).gen()
+        == "poetry export --with=dev --without-hashes -o req.txt && pip install -r req.txt"
+    )
+    test_dir = Path(__file__).parent
+    with temp_file(TOML_FILE, TOML_TEXT), chdir(test_dir):
+        cmd = Sync("req.txt", "all", save=False, dry=True).gen()
+    assert (
+        cmd
+        == "poetry export --extras='all' --without-hashes -o req.txt && pip install -r req.txt && rm -f req.txt"
+    )
