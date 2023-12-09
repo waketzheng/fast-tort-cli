@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fast-tort-cli"
-version = "0.5.1"
+version = "0.5.2"
 description = ""
 authors = ["Waket Zheng <waketzheng@gmail.com>"]
 readme = "README.md"
@@ -49,6 +49,11 @@ profile = "black"
 [tool.mypy]
 pretty = true
 ignore_missing_imports = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+check_untyped_defs = false
 
 [tool.ruff.per-file-ignores]
 "test_*.py" = ["E501"]

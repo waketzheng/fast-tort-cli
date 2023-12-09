@@ -11,7 +11,7 @@ from subprocess import CompletedProcess
 __version__ = importlib.metadata.version(Path(__file__).parent.name)
 
 
-def parse_files(args: list[str]) -> list[str]:
+def parse_files(args: list[str] | tuple[str, ...]) -> list[str]:
     return [i for i in args if not i.startswith("-")]
 
 
@@ -41,7 +41,7 @@ except ModuleNotFoundError:
 
                 def auto_fill_args(func):
                     @functools.wraps(func)
-                    def runner(*arguments, **kw):
+                    def runner(*arguments: str, **kw):
                         if "files" not in kw and not parse_files(arguments):
                             arguments = (".",)
                         return func(*arguments, **kw)
@@ -225,6 +225,10 @@ def bump():
     return BumpUp(commit, part, dry="--dry" in args).run()
 
 
+class EnvError(Exception):
+    ...
+
+
 class Project:
     @staticmethod
     async def work_dir(name: str, cwd) -> Path | None:
@@ -236,8 +240,8 @@ class Project:
         return None
 
     @staticmethod
-    def workdir(name: str) -> Path | None:
-        parent = Path.cwd()
+    def workdir(name: str, cwd: Path | None = None) -> Path | None:
+        parent = cwd or Path.cwd()
         for _ in range(5):
             if parent.joinpath(name).exists():
                 return parent
@@ -245,21 +249,29 @@ class Project:
         return None
 
     @classmethod
-    def get_work_dir(cls, name=TOML_FILE) -> Path:
+    def get_work_dir(cls, name=TOML_FILE, cwd: Path | None = None) -> Path:
         try:
             from anyio import Path, run
 
             if (p := run(cls.work_dir, name, Path.cwd)) is not None:
                 return p
         except ModuleNotFoundError:
-            if (path := cls.workdir(name)) is not None:
+            if (path := cls.workdir(name, cwd)) is not None:
                 return path
-        raise Exception(f"{name} not found! Make sure this is a poetry project.")
+        raise EnvError(f"{name} not found! Make sure this is a poetry project.")
 
     @classmethod
     def load_toml_text(cls):
         toml_file = cls.get_work_dir().resolve() / TOML_FILE  # to be optimize
         return toml_file.read_text("utf8")
+
+    @classmethod
+    def get_root_dir(cls, cwd: Path | None = None) -> Path:
+        root = cwd or Path.cwd()
+        venv_parent = Path(sys.executable).parent.parent
+        if root.is_relative_to(venv_parent):
+            root = venv_parent
+        return root
 
 
 class ParseError(Exception):
@@ -489,10 +501,14 @@ class LintCode(DryRun):
             # Sometimes mypy is too slow
             tools = tools[:-1]
         lint_them = " && ".join("{0}{%d} {1}" % i for i in range(2, len(tools) + 2))
-        root = Project.get_work_dir()
+        current_path = Path.cwd()
+        try:
+            root = Project.get_work_dir(cwd=current_path)
+        except EnvError:
+            root = Project.get_root_dir(cwd=current_path)
         app_name = root.name.replace("-", "_")
         if (app_dir := root / app_name).exists() or (app_dir := root / "app").exists():
-            if (current_path := Path.cwd()) == app_dir:
+            if current_path == app_dir:
                 tools[0] += " --src=."
             elif current_path == root:
                 tools[0] += f" --src={app_dir.name}"
@@ -563,9 +579,10 @@ class Sync(DryRun):
     def gen(self) -> str:
         extras, save = self.extras, self._save
         should_remove = not Path.cwd().joinpath(self.filename).exists()
+        prefix = "" if is_venv() else "poetry run "
         install_cmd = (
             "poetry export --with=dev --without-hashes -o {0}"
-            " && poetry run pip install -r {0}"
+            f" && {prefix}pip install -r {0}"
         )
         if not UpgradeDependencies.should_with_dev():
             install_cmd = install_cmd.replace(" --with=dev", "")

@@ -26,3 +26,4 @@ archive.zip
 
 # Generated requirement file
 dev_requirements.txt
+.DS_Store
