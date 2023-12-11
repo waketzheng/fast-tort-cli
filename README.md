@@ -22,8 +22,6 @@
 
 ---
 
-**Documentation**: <a href="https://waketzheng.github.io/fast-tort-cli" target="_blank">https://waketzheng.github.io/fast-tort-cli</a>
-
 **Source Code**: <a href="https://github.com/waketzheng/fast-tort-cli" target="_blank">https://github.com/waketzheng/fast-tort-cli</a>
 
 ## Requirements
